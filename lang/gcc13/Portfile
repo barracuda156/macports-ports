@@ -64,13 +64,30 @@ depends_lib-append  port:cctools \
 depends_run-append  port:gcc_select \
                     path:share/doc/libgcc/README:libgcc
 
+platform darwin {
+    if {(${configure.build_arch} in [list ppc ppc64]) || ${os.major} < 10} {
+        configure.compiler.add_deps \
+                        no
+        depends_build-append \
+                        port:gcc10-bootstrap
+        configure.cc    ${prefix}/libexec/gcc10-bootstrap/bin/gcc
+        configure.cxx   ${prefix}/libexec/gcc10-bootstrap/bin/g++
+    }
+}
+
 depends_skip_archcheck-append gcc_select ld64 cctools
 license_noconflict  gmp mpfr ppl libmpc zlib
 
 set major           [lindex [split ${version} .-] 0]
 
 platform darwin {
-    configure.pre_args-append --build=${build_arch}-apple-darwin${os.major}
+    if {${configure.build_arch} eq "ppc"} {
+        configure.pre_args-append --build=powerpc-apple-darwin${os.major}
+    } elseif {${configure.build_arch} eq "ppc64"} {
+        configure.pre_args-append --build=powerpc64-apple-darwin${os.major}
+    } else {
+        configure.pre_args-append --build=${build_arch}-apple-darwin${os.major}
+    }
 }
 
 set gcc_configure_langs {c c++ objc obj-c++ lto fortran}
@@ -158,6 +175,17 @@ if { ${os.platform} eq "darwin" } {
     if { ${os.major} == 18 } {
         patchfiles-append  patch-OSX10.14-ucred-atomic-define.diff
     }
+
+    patchfiles-append      patch-contrib-fat-gcc.sh-replacement-of-driver-driver-work.diff
+}
+
+platform darwin powerpc {
+    patchfiles-append      0001-gcc-config-restore-ppc_intrinsics.h.patch \
+                           0002-libgfortran-implement-fpu-ppc-for-macOS.patch
+}
+
+platform darwin 10 powerpc {
+    patchfiles-append      0003-Fix-config-for-pre-release-10.6.patch
 }
 
 # Since GCC 7.4.0, during configure, it detects features supported by target-as.
@@ -203,8 +231,6 @@ if {${os.platform} eq "darwin" && ${os.major} >= 22} {
         # https://developer.apple.com/forums/thread/737707
         # https://github.com/Homebrew/homebrew-core/issues/145991
         configure.args-replace --with-ld=${prefix}/bin/ld --with-ld=${prefix}/bin/ld-classic
-        # Ensure ld64 is installed with the correct variant need for ld-classic
-        require_active_variants ld64 ld64_xcode
     }
 }
 
@@ -236,11 +262,16 @@ subport ${libcxxname} {
     compilers.choose        cxx
     compilers.setup         -gcc -fortran -clangdevel -clang34 -clang35 -clang36 \
                             -clang37 -clang50 -clang60 -clang70 -clang80 -clang90
-    if { ![clang_variant_isset] } {
-        if { ${os.platform} eq "darwin" && ${os.major} < 11 } {
-            default_variants-append +clang11
+    if {![clang_variant_isset]} {
+        if {${os.platform} eq "darwin" && ${os.major} < 11} {
+            if {${configure.build_arch} in [list ppc ppc64]} {
+                depends_lib-append \
+                            port:libcxx-powerpc
+            } else {
+                default_variants-append +clang11
+            }
         } else {
-            default_variants-append +clang16
+            default_variants-append +clang14
         }
     }
     revision                [ expr ${revision} + 0 ]
@@ -259,17 +290,19 @@ subport ${libcxxname} {
     supported_archs         noarch
     platforms               any
     # Find clang/llvm version to use from active variant
-    proc getClangVersion {} {
-        if { [regexp {clang(.*)} [clang_variant_name] -> clang_v] } {
-            return ${clang_v}
-        }
-        return ""
-    }
-    set mp_clang_ver [getClangVersion]
+    # proc getClangVersion {} {
+    #     if { [regexp {clang(.*)} [clang_variant_name] -> clang_v] } {
+    #         return ${clang_v}
+    #     }
+    #     return ""
+    # }
+    # set mp_clang_ver [getClangVersion]
     build {
         # Copy headers from clang-N during build
         file mkdir ${worksrcpath}/headers
-        file copy ${prefix}/libexec/llvm-${mp_clang_ver}/include/c++/v1 ${worksrcpath}/headers/
+        # file copy ${prefix}/libexec/llvm-${mp_clang_ver}/include/c++/v1 ${worksrcpath}/headers/
+        # Copy headers from libcxx-powerpc port during build
+        file copy ${prefix}/include/c++/v1 ${worksrcpath}/headers/
     }
     destroot {
         set base_dir [file dirname ${libcxx_incpath}]
@@ -294,7 +327,7 @@ if { ${subport} ne ${libcxxname} } {
         configure.args-append --with-gxx-libcxx-include-dir="${libcxx_incpath}"
     }
 
-    # libcxx is unavailable on PPC
+    # libcxx may not be fully functional on PowerPC yet.
     if {${build_arch} ni [list ppc ppc64]} {
         default_variants-append +stdlib_flag
     }
@@ -305,7 +338,7 @@ if { ${subport} ne ${libcxxname} } {
 # https://trac.macports.org/ticket/29104
 # https://trac.macports.org/ticket/47996
 # https://trac.macports.org/ticket/58493
-compiler.blacklist-append {clang < 800} gcc-4.0 *gcc-4.2 {llvm-gcc-4.2 < 2336.1} {macports-clang-3.[4-7]}
+compiler.blacklist-append {clang < 800} gcc-4.0 {llvm-gcc-4.2 < 2336.1} {macports-clang-3.[4-7]}
 
 # https://build.macports.org/builders/ports-10.13_x86_64-builder/builds/105513/steps/install-port/logs/stdio
 # c++/v1/functional:1408:2: error: no member named 'fancy_abort' in namespace 'std::__1'; did you mean simply 'fancy_abort'?
@@ -333,8 +366,8 @@ build.target        bootstrap-lean
 
 destroot.target     install install-info-host
 
-# gcc cannot build if these are active
-conflicts_build-append libunwind-headers binutils gdb
+# gcc cannot build if libunwind-headers is active
+conflicts_build-append libunwind-headers binutils
 
 # Find dylibs at a given location
 proc dylib_list {location} {
@@ -519,6 +552,10 @@ if {${subport} eq ${name}} {
             }
         }
 
+        platform darwin {
+            xinstall -d ${destroot}${prefix}/share/gcc-13/contrib
+            file copy ${worksrcpath}/contrib/fat-gcc.sh ${destroot}${prefix}/share/gcc-13/contrib/
+        }
     }
 
     select.group        gcc
