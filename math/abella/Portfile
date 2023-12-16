@@ -1,10 +1,9 @@
 # -*- coding: utf-8; mode: tcl; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- vim:fenc=utf-8:ft=tcl:et:sw=4:ts=4:sts=4
 
 PortSystem          1.0
-PortGroup           ocaml 1.1
 
 name                abella
-version             2.0.7
+version             2.0.8
 revision            0
 categories          math ocaml
 maintainers         {@barracuda156 gmail.com:vital.had} openmaintainer
@@ -16,31 +15,22 @@ long_description    Abella is an interactive theorem prover based on lambda-tree
 homepage            https://abella-prover.org
 master_sites        https://abella-prover.org/distributions
 
-checksums           rmd160  f6ea41a4def908c9ec9c44d8ad207d756fc5f8f2 \
-                    sha256  fde3a279b3051e0aeeaedad21cf96064edf19a6c413949b2033b305d92dddd87 \
-                    size    215056
+checksums           rmd160  b1a6443987c0598dd544a06b524eb119b2760eee \
+                    sha256  f346ff454a44dca458d10bbc79e4f101b93a9b0186ea35533ce3f4a858f28f63 \
+                    size    255157
 
 depends_build-append \
-                    port:gmake \
-                    port:ocaml-findlib \
-                    port:ocaml-ocamlbuild
+                    port:ocaml \
+                    port:ocaml-dune
 
-patchfiles          patch-bytecode.diff
+depends_lib-append  port:ocaml-cmdliner \
+                    port:ocaml-crunch \
+                    port:ocaml-menhir \
+                    port:ocaml-yojson
 
-post-patch {
-    reinplace "s|4-29-40-41-42-44-45-48-58-59-60|4-29-40-41-42-44-45-48-58-59-60-70|" \
-                    ${worksrcpath}/myocamlbuild.ml
-}
+depends_test-append port:ocaml-ounit2
 
 use_configure       no
-
-if {${build_arch} in [list ppc ppc64]} {
-    build.target    byte
-    test.target     test_byte
-} else {
-    build.target    all
-    test.target     test
-}
 
 destroot {
     xinstall -m 755 -d ${destroot}${prefix}/bin
