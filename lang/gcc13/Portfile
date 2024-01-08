@@ -296,13 +296,11 @@ subport ${libcxxname} {
     #     }
     #     return ""
     # }
-    # set mp_clang_ver [getClangVersion]
+    set mp_clang_ver 7.1.1
     build {
-        # Copy headers from clang-N during build
         file mkdir ${worksrcpath}/headers
-        # file copy ${prefix}/libexec/llvm-${mp_clang_ver}/include/c++/v1 ${worksrcpath}/headers/
         # Copy headers from libcxx-powerpc port during build
-        file copy ${prefix}/include/c++/v1 ${worksrcpath}/headers/
+        file copy ${prefix}/libexec/llvm-${mp_clang_ver}/include/c++/v1 ${worksrcpath}/headers/
     }
     destroot {
         set base_dir [file dirname ${libcxx_incpath}]
