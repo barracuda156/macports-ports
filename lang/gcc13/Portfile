@@ -136,6 +136,8 @@ configure.args      --enable-languages=[join ${gcc_configure_langs} ","] \
                     --with-darwin-extra-rpath=${mp_extra_rpath} \
                     --with-libiconv-prefix=${prefix}
 
+# configure.args-append --with-tune-cpu=G5
+
 # see https://lists.macports.org/pipermail/macports-dev/2017-August/036209.html
 # --disable-tls does not limit functionality
 # it only determines how std::call_once works
@@ -187,6 +189,14 @@ platform darwin powerpc {
 platform darwin 10 powerpc {
     patchfiles-append      0003-Fix-config-for-pre-release-10.6.patch
 }
+
+# TODO: add a version for Intel. Since most of needed for 10a190 ppc fixes already exist
+# in gcc/config/rs6000/darwin.h (GCC upstream supports Rosetta), powerpc patch can be minimal;
+# however none of these issues are in reality arch-specific, they are conditional on the SDK.
+# Therefore, Intel needs more here.
+# platform darwin 10 i386 {
+#     patchfiles-append      0004-Fix-config-for-pre-release-10.6.patch
+# }
 
 # Since GCC 7.4.0, during configure, it detects features supported by target-as.
 # On the other hand, MacPorts cctools contain a proxy for 'as' that runs system
@@ -259,6 +269,12 @@ set libcxx_incpath ${prefix}/libexec/${name}/libc++/include/c++/v1
 subport ${libcxxname} {
     PortGroup compilers     1.0
 
+    # FIXME: gcc13 does not work with some versions of libcxx headers (any arch):
+    # https://trac.macports.org/ticket/68592
+    # https://github.com/iains/gcc-13-branch/issues/12
+
+    # TODO: get rid of Clang dependency, we want everything to be bootstrappable on 10.6
+    # with minimal dependencies, and gcc10-bootstrap can build libcxx.
     compilers.choose        cxx
     compilers.setup         -gcc -fortran -clangdevel -clang34 -clang35 -clang36 \
                             -clang37 -clang50 -clang60 -clang70 -clang80 -clang90
@@ -311,6 +327,8 @@ subport ${libcxxname} {
 
 if { ${subport} ne ${libcxxname} } {
 
+    # TODO: it is not clear if this variant is needed at all for libgcc*
+    # https://trac.macports.org/ticket/69067
     variant stdlib_flag description {Enable stdlib command line flag to select c++ runtime} {
         # Enables support for specifying the c++ runtime via `-stdlib=` in a similar
         # way to clang. For more details see the later comments in
@@ -325,7 +343,7 @@ if { ${subport} ne ${libcxxname} } {
         configure.args-append --with-gxx-libcxx-include-dir="${libcxx_incpath}"
     }
 
-    # libcxx may not be fully functional on PowerPC yet.
+    # TODO: consider enabling after some testing.
     if {${build_arch} ni [list ppc ppc64]} {
         default_variants-append +stdlib_flag
     }
@@ -336,6 +354,9 @@ if { ${subport} ne ${libcxxname} } {
 # https://trac.macports.org/ticket/29104
 # https://trac.macports.org/ticket/47996
 # https://trac.macports.org/ticket/58493
+# Some system compiler must not be blacklisted, otherwise Macports creates a circular dependency,
+# and the build cannot be started. It will not be actually used, since the code above sets gcc10-bootstrap
+# as the compiler anyway. Therefore remove gcc-4.2 from blacklist.
 compiler.blacklist-append {clang < 800} gcc-4.0 {llvm-gcc-4.2 < 2336.1} {macports-clang-3.[4-7]}
 
 # https://build.macports.org/builders/ports-10.13_x86_64-builder/builds/105513/steps/install-port/logs/stdio
