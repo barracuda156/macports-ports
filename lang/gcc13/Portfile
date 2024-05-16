@@ -267,33 +267,12 @@ pre-configure {
 set libcxx_incpath ${prefix}/libexec/${name}/libc++/include/c++/v1
 
 subport ${libcxxname} {
-    PortGroup compilers     1.0
+    depends_build-append    port:libcxx-powerpc
 
-    # FIXME: gcc13 does not work with some versions of libcxx headers (any arch):
-    # https://trac.macports.org/ticket/68592
-    # https://github.com/iains/gcc-13-branch/issues/12
-
-    # TODO: get rid of Clang dependency, we want everything to be bootstrappable on 10.6
-    # with minimal dependencies, and gcc10-bootstrap can build libcxx.
-    compilers.choose        cxx
-    compilers.setup         -gcc -fortran -clangdevel -clang34 -clang35 -clang36 \
-                            -clang37 -clang50 -clang60 -clang70 -clang80 -clang90
-    if {![clang_variant_isset]} {
-        if {${os.platform} eq "darwin" && ${os.major} < 11} {
-            if {${configure.build_arch} in [list ppc ppc64]} {
-                depends_lib-append \
-                            port:libcxx-powerpc
-            } else {
-                default_variants-append +clang11
-            }
-        } else {
-            default_variants-append +clang14
-        }
-    }
     revision                [ expr ${revision} + 0 ]
     description             libc++ header implementation to be used by ${name}
     long_description        {*}${description}
-    homepage                https://llvm.org/
+    homepage                https://llvm.org
     license                 NCSA
     depends_build
     depends_extract
@@ -301,21 +280,16 @@ subport ${libcxxname} {
     depends_lib
     distfiles
     patchfiles
-    extract.rename          no
     use_configure           no
     supported_archs         noarch
-    platforms               any
-    # Find clang/llvm version to use from active variant
-    # proc getClangVersion {} {
-    #     if { [regexp {clang(.*)} [clang_variant_name] -> clang_v] } {
-    #         return ${clang_v}
-    #     }
-    #     return ""
-    # }
-    set mp_clang_ver 7.1.1
+    platforms               {darwin < 11}
+
+    # Version used in libcxx-powerpc port:
+    set mp_clang_ver        7.1.1
+
     build {
+        # Copy headers from libcxx during build:
         file mkdir ${worksrcpath}/headers
-        # Copy headers from libcxx-powerpc port during build
         file copy ${prefix}/libexec/llvm-${mp_clang_ver}/include/c++/v1 ${worksrcpath}/headers/
     }
     destroot {
@@ -343,10 +317,9 @@ if { ${subport} ne ${libcxxname} } {
         configure.args-append --with-gxx-libcxx-include-dir="${libcxx_incpath}"
     }
 
-    # TODO: consider enabling after some testing.
-    if {${build_arch} ni [list ppc ppc64]} {
-        default_variants-append +stdlib_flag
-    }
+    # Notice that while this is enabled in the build, it is largely untested
+    # and should not be used by default.
+    default_variants-append +stdlib_flag
 
 }
 
